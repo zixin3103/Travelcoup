@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Us Two — Travel Planner</title>
+<style>
+:root{--bg:#F7F3EC;--card:#fff;--line:#E9DFD0;--mute:#A99A88;--acc:#6F5545;--olive:#879078;--ink:#332F2B;--soft:#E9DFD0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#26221E;--card:#332E29;--line:#4A423B;--mute:#B5A592;--acc:#D8B9A3;--olive:#A5AF95;--ink:#F2EBE0;--soft:#40382F}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:84px}
+h1,h2,h3{font-family:Georgia,Cambria,serif;font-weight:600;margin:0}
+main{max-width:720px;margin:0 auto;padding:12px 16px}
+.top{display:flex;align-items:center;justify-content:space-between;max-width:720px;margin:0 auto;padding:10px 16px 0}
+.brand{font-family:Georgia,serif;color:var(--acc);letter-spacing:.04em}
+.av{display:inline-flex;gap:-4px}.av i{width:22px;height:22px;border-radius:50%;background:var(--olive);color:#fff;font:600 11px/22px system-ui;text-align:center;font-style:normal;border:2px solid var(--bg);margin-left:-6px}.av i+i{background:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.card.fixed{border-left:5px solid var(--acc);background:var(--soft)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.sp{justify-content:space-between}
+.mute{color:var(--mute);font-size:14px}.big{font:600 40px Georgia,serif;color:var(--acc)}
+.btn{min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--acc);background:var(--acc);color:var(--bg);font:inherit;cursor:pointer}
+.btn.o{background:transparent;color:var(--acc)}.btn.s{min-height:36px;padding:4px 10px;font-size:14px}.btn.d{border-color:#B0463A;color:#B0463A;background:transparent}
+.chip{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--acc);border:1px solid var(--line)}.chip.f{background:var(--acc);color:var(--bg)}
+input,select,textarea{width:100%;min-height:44px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+label{display:block;font-size:14px;color:var(--mute);margin:8px 0 2px}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;min-height:56px;border:0;background:none;color:var(--mute);font:inherit;font-size:12px;cursor:pointer}nav button[aria-current=page]{color:var(--acc);font-weight:700}
+.modal{position:fixed;inset:0;background:#0007;display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{background:var(--bg);width:100%;max-width:640px;max-height:90vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:30}
+.bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden}.bar b{display:block;height:100%;background:var(--olive)}
+.ban{background:var(--soft);border:1px solid var(--line);padding:8px 12px;border-radius:8px;font-size:14px;margin:8px 0}
+a{color:var(--acc)}.done{text-decoration:line-through;color:var(--mute)}
+</style></head><body>
+<div class="top"><span class="brand">Us Two ♡</span><span class="av" title="Shared trip"><i>U</i><i>T</i></span></div>
+<main id="app"></main><nav id="nav"></nav><div id="m"></div>
+<script>
+const CATS=["Cafe","Restaurant","Shopping","Sightseeing","Exhibition","Beauty","Flower Shop","Nature","Other"];
+const S={trip:null,places:[],items:[],prep:[],book:[]};
+let view="home",day=null,ptab="pack",F={q:"",city:"",cat:"",st:"",sort:"new"},store,notice="";
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+const today=tz=>{try{return new Intl.DateTimeFormat("en-CA",{timeZone:tz||undefined}).format(new Date())}catch(e){return new Date().toISOString().slice(0,10)}};
+const dd=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/864e5);
+const addD=(d,n)=>new Date(Date.parse(d)+n*864e5).toISOString().slice(0,10);
+const fmt=d=>d?new Date(d+"T00:00:00Z").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}):"";
+function toast(t){const e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2200)}
+const byOrd=(a,b)=>(a.ord??a.created??0)-(b.ord??b.created??0);
+
+/* ---------- storage: shared db when available, local fallback ---------- */
+async function init(){
+  let db=null;try{db=window.claude?await claude.use("db"):null}catch(e){}
+  const cols=["trips","places","items","prep","book"];
+  const set=(c,a)=>{if(c==="trips")S.trip=a[0]||null;else S[{places:"places",items:"items",prep:"prep",book:"book"}[c]]=a;render()};
+  if(db){
+    store={shared:true,save:(c,id,d)=>db.collection(c).doc(id).set(d),del:(c,id)=>db.collection(c).doc(id).delete(),
+      sub:c=>db.collection(c).onSnapshot(s=>set(c,s.docs.map(d=>({...d.data(),id:d.id}))),e=>{notice="Sync problem: "+e.message;render()})};
+  }else{
+    const L={};const rd=c=>{try{return JSON.parse(localStorage.getItem("ut_"+c)||"{}")}catch(e){return{}}};
+    const push=c=>set(c,Object.entries(L[c]).map(([id,d])=>({...d,id})));
+    store={shared:false,save:async(c,id,d)=>{L[c][id]=d;try{localStorage.setItem("ut_"+c,JSON.stringify(L[c]))}catch(e){}push(c)},
+      del:async(c,id)=>{delete L[c][id];try{localStorage.setItem("ut_"+c,JSON.stringify(L[c]))}catch(e){}push(c)},
+      sub:c=>{L[c]=rd(c);push(c)}};
+    notice="Shared storage isn’t available here, so data is saved only in this browser. Open the published link while signed in to share it with your travel partner.";
+  }
+  cols.forEach(c=>store.sub(c));render();
+}
+const save=(c,o)=>{const id=o.id||uid(),{id:_,...d}=o;if(!o.id)d.created=Date.now();return store.save(c,id,d).catch(e=>toast("Save failed: "+(e.message||e)))};
+const del=(c,id)=>store.del(c,id).catch(e=>toast("Delete failed"));
+
+/* ---------- dialogs ---------- */
+function sheet(html){$("#m").innerHTML=`<div class="modal" data-a="x"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`}
+function close(){$("#m").innerHTML=""}
+function field(f,v){const val=v?.[f.k]??f.d??"";const id="f_"+f.k;let i;
+  if(f.t==="textarea")i=`<textarea id="${id}" name="${f.k}" rows="3">${esc(val)}</textarea>`;
+  else if(f.t==="select")i=`<select id="${id}" name="${f.k}">${f.o.map(o=>{const[a,b]=Array.isArray(o)?o:[o,o];return`<option value="${esc(a)}" ${a==val?"selected":""}>${esc(b)}</option>`}).join("")}</select>`;
+  else i=`<input id="${id}" name="${f.k}" type="${f.t||"text"}" value="${esc(val)}" ${f.r?"required":""}>`;
+  return`<label for="${id}">${f.l}${f.r?" *":""}</label>${i}`}
+function form(title,fields,vals,onSave,note){
+  sheet(`<h2>${title}</h2>${note?`<p class="mute">${note}</p>`:""}<form id="ff">${fields.map(f=>field(f,vals)).join("")}<div class="row" style="margin-top:14px"><button class="btn">Save</button><button type="button" class="btn o" data-a="x">Cancel</button></div></form>`);
+  $("#ff").onsubmit=e=>{e.preventDefault();const o={};new FormData(e.target).forEach((v,k)=>o[k]=String(v).trim());onSave(o)};
+}
+
+/* ---------- field definitions ---------- */
+const TRIP=[{k:"name",l:"Trip name",r:1},{k:"dest",l:"Destination(s)"},{k:"start",l:"Start date",t:"date",r:1},{k:"end",l:"End date",t:"date",r:1},{k:"tz",l:"Time zone (IANA)",d:"Asia/Seoul",r:1},{k:"budget",l:"Budget (optional)"}];
+const PLACE=[{k:"name",l:"Place name",r:1},{k:"branch",l:"Outlet / branch"},{k:"country",l:"Country"},{k:"city",l:"City"},{k:"category",l:"Category",t:"select",o:CATS,d:"Other"},{k:"address",l:"Full address"},{k:"lat",l:"Latitude (if known)"},{k:"lng",l:"Longitude (if known)"},{k:"desc",l:"Short description",t:"textarea"},{k:"highlight",l:"Highlights"},{k:"hours",l:"Opening hours — one line per day; leave empty if unknown, write “Closed” for closed days",t:"textarea"},{k:"hoursNote",l:"Hours notes / last verified"},{k:"price",l:"Estimated price"},{k:"currency",l:"Currency"},{k:"menu",l:"Recommended menu / activity"},{k:"booking",l:"Booking requirements"},{k:"website",l:"Official website"},{k:"resUrl",l:"Reservation URL"},{k:"social",l:"Social media link"},{k:"source",l:"Source URL"},{k:"priority",l:"Priority",t:"select",o:["","Low","Medium","High"]},{k:"notes",l:"Personal notes",t:"textarea"}];
+const ITEM=[{k:"date",l:"Date",t:"date",r:1},{k:"start",l:"Start time",t:"time"},{k:"end",l:"End time",t:"time"},{k:"dur",l:"Estimated duration"},{k:"type",l:"Planning type",t:"select",o:[["flexible","Flexible"],["fixed","Fixed"]]},{k:"status",l:"Booking status",t:"select",o:[["none","—"],["Not booked","Not booked"],["Pending","Pending"],["Confirmed","Confirmed"],["Cancelled","Cancelled"]]},{k:"snotes",l:"Schedule notes",t:"textarea"}];
+const BK={flight:"Flight",train:"Train / bus",hotel:"Accommodation",insurance:"Insurance",entry:"Entry / immigration",doc:"Document / reference"};
+const BF=k=>({flight:[["title","Airline & flight no.",1],["from","Departure airport"],["to","Arrival airport"],["date","Departure date","date"],["time","Departure time","time"],["arr","Arrival date & time"],["gate","Terminal / gate"],["ref","Booking reference"],["url","Ticket URL"]],
+ train:[["title","Operator & train no.",1],["from","From station"],["to","To station"],["date","Date","date"],["time","Departure time","time"],["arr","Arrival time"],["seat","Seat / carriage"],["ref","Booking reference"],["url","Ticket URL"]],
+ hotel:[["title","Hotel name",1],["city","City"],["address","Address"],["date","Check-in date","date"],["time","Check-in time","time"],["out","Check-out date & time"],["plat","Booking platform"],["ref","Booking reference"],["url","Confirmation URL"],["contact","Contact details"]],
+ insurance:[["title","Provider",1],["policy","Policy number"],["cover","Coverage dates"],["emerg","Emergency contact"],["claims","Claims contact"],["url","Policy document link"]],
+ entry:[["title","Requirement (e.g. K-ETA)",1],["url","Official information URL"],["status","Status (as you record it)"],["ref","Application reference"],["date","Important date","date"]],
+ doc:[["title","Title",1],["url","Link"],["ref","Related booking / place"]]}[k].map(([k,l,t])=>({k,l,t:t==1?"text":t,r:t==1})));
+
+/* ---------- helpers ---------- */
+const place=id=>S.places.find(p=>p.id===id);
+const mapQ=p=>p.lat&&p.lng?`${p.lat},${p.lng}`:(p.address||[p.name,p.branch,p.city].filter(Boolean).join(" "));
+const gmap=p=>"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(mapQ(p));
+const nmap=p=>"https://map.naver.com/p/search/"+encodeURIComponent(p.address||[p.name,p.branch,p.city].filter(Boolean).join(" "));
+const sched=id=>S.items.filter(i=>i.placeId===id);
+const safeUrl=u=>/^https?:\/\//i.test(u||"")?esc(u):"";
+async function copy(t){if(!t){toast("No address stored yet");return}try{await navigator.clipboard.writeText(t);toast("Address copied")}catch(e){const a=document.createElement("textarea");a.value=t;document.body.appendChild(a);a.select();let ok=false;try{ok=document.execCommand("copy")}catch(_){}a.remove();toast(ok?"Address copied":"Copy failed — select the address manually")}}
+const links=p=>`<div class="row"><button class="btn s o" data-a="copy" data-t="${esc(p.address||"")}">Copy address</button><a class="btn s o" target="_blank" rel="noopener" href="${gmap(p)}">Google Maps</a><a class="btn s o" target="_blank" rel="noopener" href="${nmap(p)}">NAVER Map</a>${safeUrl(p.website)?`<a class="btn s o" target="_blank" rel="noopener" href="${safeUrl(p.website)}">Website</a>`:""}</div>`;
+function placeDetail(p){const r=(l,v)=>v?`<p style="margin:6px 0"><span class="mute">${l}</span><br>${esc(v)}</p>`:"";
+  return`<h3>${esc(p.name)}${p.branch?` — ${esc(p.branch)}`:""}</h3><p class="mute">${esc([p.category,p.city,p.country].filter(Boolean).join(" · "))}</p>${links(p)}
+  ${r("Address",p.address)}${r("Description",p.desc)}${r("Highlights",p.highlight)}${r("Opening hours",p.hours||"Unknown — not verified")}${r("Hours notes",p.hoursNote)}${r("Estimated price",[p.price,p.currency].filter(Boolean).join(" "))}${r("Recommended",p.menu)}${r("Booking requirements",p.booking)}${r("Notes",p.notes)}${safeUrl(p.resUrl)?`<p><a target="_blank" rel="noopener" href="${safeUrl(p.resUrl)}">Reservation link</a></p>`:""}${safeUrl(p.source)?`<p><a target="_blank" rel="noopener" href="${safeUrl(p.source)}">Source</a></p>`:""}`}
+const empty=(t,b="")=>`<div class="card mute" style="text-align:center">${t}<div style="margin-top:8px">${b}</div></div>`;
+
+/* ---------- views ---------- */
+function itemCard(i){const p=place(i.placeId)||{name:i.title};const f=i.type==="fixed";
+  return`<div class="card ${f?"fixed":""}" data-a="item" data-id="${i.id}" tabindex="0" role="button" style="cursor:pointer"><div class="row sp"><b>${esc(i.start||"Anytime")}${i.end?"–"+esc(i.end):""} · ${esc(p.name)}</b><span class="chip ${f?"f":""}">${f?"Fixed":"Flexible"}</span></div><div class="mute">${esc(p.city||"")}${i.status&&i.status!=="none"?" · "+esc(i.status):""}${p.address?" · 📍 address saved":""}</div></div>`}
+function home(){const t=S.trip;if(!t)return empty("No trip yet. Create one to see your countdown.",`<button class="btn" data-a="trip">Create trip</button>`);
+  const td=today(t.tz),until=dd(td,t.start),st=td<t.start?"Upcoming":td<=t.end?"In progress":"Completed",len=dd(t.start,t.end)+1;
+  const big=st==="Upcoming"?`${until}<span class="mute" style="font:16px system-ui"> day${until==1?"":"s"} to go</span>`:st==="In progress"?`Day ${dd(t.start,td)+1}<span class="mute" style="font:16px system-ui"> of ${len} · ${dd(td,t.end)} left</span>`:`<span style="font-size:24px">Trip completed</span>`;
+  const todays=S.items.filter(i=>i.date===td).sort((a,b)=>(a.type==="fixed"?0:1)-(b.type==="fixed"?0:1)||(a.start||"99").localeCompare(b.start||"99"));
+  const up=[...S.items.filter(i=>i.type==="fixed"&&i.date>=td&&i.status!=="Cancelled").map(i=>({d:i.date,t:i.start,n:(place(i.placeId)||{}).name||i.title})),...S.book.filter(b=>["flight","train","hotel"].includes(b.kind)&&b.date>=td).map(b=>({d:b.date,t:b.time,n:BK[b.kind]+": "+b.title}))].sort((a,b)=>(a.d+(a.t||"")).localeCompare(b.d+(b.t||""))).slice(0,5);
+  return`<div class="card"><div class="row sp"><h2>${esc(t.name)}</h2><button class="btn s o" data-a="trip">Edit</button></div><div class="mute">${fmt(t.start)} – ${fmt(t.end)} · ${esc(t.dest||"")} · ${esc(t.tz)}</div><div class="big">${big}</div><span class="chip">${st}</span> <span class="chip">♡ Shared trip</span></div>
+  <div class="card"><h3>Local weather</h3><p class="mute">Weather isn’t shown here. This page can’t reach a weather provider, and I won’t display made-up readings. The Next.js app in your repo has the Open-Meteo adapter for Seoul and Busan.</p></div>
+  <h3>Today · ${fmt(td)}</h3>${todays.length?todays.map(itemCard).join(""):empty("Nothing scheduled today. Enjoy the slack ♡")}
+  <div class="row" style="margin:8px 0"><button class="btn s" data-a="addplan" data-t="fixed">+ Fixed plan</button><button class="btn s o" data-a="addplan" data-t="flexible">+ Flexible plan</button><button class="btn s o" data-a="addwish">+ Wishlist</button><button class="btn s o" data-a="go" data-v="ess">Travel Essentials</button><button class="btn s o" data-a="go" data-v="prep">Preparation</button></div>
+  <h3>Upcoming</h3>${up.length?up.map(u=>`<div class="card"><b>${esc(u.n)}</b><div class="mute">${fmt(u.d)} ${esc(u.t||"")}</div></div>`).join(""):empty("No upcoming bookings yet.")}
+  <p class="mute">No notifications are sent by this app.</p>`}
+function itin(){const t=S.trip;if(!t)return empty("Create a trip on Home first.");
+  const td=today(t.tz);day=day||(td>=t.start&&td<=t.end?td:t.start);
+  const list=S.items.filter(i=>i.date===day).sort((a,b)=>(a.start||"99").localeCompare(b.start||"99"));const fx=list.filter(i=>i.type==="fixed"),fl=list.filter(i=>i.type!=="fixed");
+  return`<div class="row sp"><button class="btn s o" data-a="day" data-n="-1" aria-label="Previous day">‹</button><input type="date" value="${day}" id="dpick" style="width:auto"><button class="btn s o" data-a="day" data-n="1" aria-label="Next day">›</button></div>
+  <h3 style="margin-top:12px">${fmt(day)}</h3>
+  <div class="row"><button class="btn s" data-a="addplan" data-t="fixed">+ Fixed</button><button class="btn s o" data-a="addplan" data-t="flexible">+ Flexible</button></div>
+  ${fx.length?`<p class="mute">Fixed bookings</p>${fx.map(itemCard).join("")}`:""}${fl.length?`<p class="mute">Flexible</p>${fl.map(itemCard).join("")}`:""}
+  ${list.length?"":empty("Nothing planned for this day.",`<button class="btn s o" data-a="go" data-v="wish">Pick from Wishlist</button>`)}`}
+function filt(){const ps=S.places.filter(p=>p.wish!==false);const cities=[...new Set(S.places.map(p=>p.city).filter(Boolean))];
+  let a=S.places.filter(p=>(view==="map"||p.wish!==false)&&(!F.q||(p.name||"").toLowerCase().includes(F.q.toLowerCase()))&&(!F.city||p.city===F.city)&&(!F.cat||p.category===F.cat)&&(!F.st||(F.st==="s")===(sched(p.id).length>0)));
+  a=F.sort==="az"?a.sort((x,y)=>x.name.localeCompare(y.name)):a.sort((x,y)=>(y.created||0)-(x.created||0));
+  return{a,bar:`<div class="row" style="margin:8px 0">${view==="wish"?`<input id="fq" placeholder="Search by name" value="${esc(F.q)}" style="flex:2;min-width:140px">`:""}<select data-f="city" style="flex:1"><option value="">All cities</option>${cities.map(c=>`<option ${F.city===c?"selected":""}>${esc(c)}</option>`).join("")}</select><select data-f="cat" style="flex:1"><option value="">All categories</option>${CATS.map(c=>`<option ${F.cat===c?"selected":""}>${c}</option>`).join("")}</select>${view==="wish"?`<select data-f="st" style="flex:1"><option value="">Any status</option><option value="s" ${F.st==="s"?"selected":""}>Scheduled</option><option value="u" ${F.st==="u"?"selected":""}>Not scheduled</option></select><select data-f="sort" style="flex:1"><option value="new">Recently added</option><option value="az" ${F.sort==="az"?"selected":""}>A–Z</option></select>`:""}</div>`}}
+function wish(){const{a,bar}=filt();return`<div class="row sp"><h2>Wishlist</h2><button class="btn s" data-a="addwish">+ Add place</button></div>${bar}${a.length?a.map(p=>{const s=sched(p.id);return`<div class="card"><div class="row sp"><b>${esc(p.name)}</b><span class="chip">${esc(p.category||"Other")}</span></div><div class="mute">${esc(p.city||"No city yet")}${p.highlight?" · "+esc(p.highlight):""}${p.priority?" · "+p.priority+" priority":""}</div><div class="mute">${s.length?"Scheduled "+s.map(i=>i.date).join(", "):"Not scheduled"}</div><div class="row" style="margin-top:8px"><button class="btn s" data-a="addday" data-id="${p.id}">Add to Day</button><button class="btn s o" data-a="pdet" data-id="${p.id}">Details</button><button class="btn s o" data-a="pedit" data-id="${p.id}">Edit</button></div></div>`}).join(""):empty("Your Wishlist is empty. Save a place with just its name.",`<button class="btn" data-a="addwish">Add a place</button>`)}`}
+function map(){const{a,bar}=filt();return`<h2>Map</h2><p class="mute">Opens your chosen map app. Coordinates are used only if you stored them; otherwise the address or name is searched.</p>${bar}${a.length?a.map(p=>{const s=sched(p.id);return`<div class="card ${s.some(i=>i.type==="fixed")?"fixed":""}"><div class="row sp"><b>${esc(p.name)}</b>${s.length?`<span class="chip ${s.some(i=>i.type==="fixed")?"f":""}">${s.some(i=>i.type==="fixed")?"Fixed":"Flexible"}</span>`:`<span class="chip">Wishlist</span>`}</div><div class="mute">${esc(p.city||"")} · ${esc(p.category||"")}</div>${links(p)}</div>`}).join(""):empty("No places to show.")}`}
+function ess(){const g=Object.keys(BK);return`<div class="row sp"><h2>Travel Essentials</h2><button class="btn s" data-a="addbk">+ Add</button></div>
+  <div class="ban">Entry rules (e.g. K-ETA) depend on nationality, passport type, dates and exemptions. Always verify on the official government site. Nothing here is marked approved unless you record it.</div>
+  <div class="ban">File uploads aren’t part of this page. Store links or references only, and don’t enter passport or card numbers. Private-bucket document storage lives in the Next.js app.</div>
+  ${g.map(k=>{const l=S.book.filter(b=>b.kind===k).sort((a,b)=>(a.date||"").localeCompare(b.date||""));return l.length?`<h3 style="margin-top:14px">${BK[k]}</h3>${l.map(b=>`<div class="card"><div class="row sp"><b>${esc(b.title)}</b><button class="btn s o" data-a="bkedit" data-id="${b.id}">Edit</button></div><div class="mute">${[b.from&&b.to?esc(b.from)+" → "+esc(b.to):"",b.date?fmt(b.date)+" "+esc(b.time||""):"",b.ref?"Ref "+esc(b.ref):"",b.status?"Status: "+esc(b.status):""].filter(Boolean).join(" · ")}</div>${b.address?`<div style="margin-top:6px">${esc(b.address)}</div>${links({name:b.title,address:b.address,city:b.city})}`:""}${safeUrl(b.url)?`<a target="_blank" rel="noopener" href="${safeUrl(b.url)}">Open link</a>`:""}</div>`).join("")}`:""}).join("")||empty("Nothing added yet.")}`}
+const START={pack:{"Important documents":["Passport and required entry documents","Flight, accommodation and train confirmations","Travel insurance details","Credit and debit cards","Small amount of cash","Emergency contact information","Important reservation confirmations"],"Medication & personal care":["Personal prescription medication","Basic first-aid items","Personal toiletries","Skincare and moisturizer","Lip balm","Glasses or contact lenses, if used"],"Electronics":["Smartphone, cable and charger","Camera, batteries and charger","Earphones","Power bank (check airline rules; carry-on only)","Travel plug adapter for destination","Watch / other device chargers"],"Clothing":["Long-sleeve tops","Lightweight inner layers","Knitwear or sweatshirt","Light jacket or trench coat","Long trousers","Comfortable walking shoes","Socks and underwear","Sleepwear","Foldable shopping bag"],"Before departure":["Check the weather forecast","Confirm airline baggage limits","Confirm transportation reservations","Check hotel check-in instructions","Install and test travel apps","Save important addresses","Verify payment methods","Check opening hours and booking times"]},
+ app:{"Transport & navigation":["KorailTalk","NAVER Map","KakaoMap","Kakao T"],"Food delivery":["Coupang Eats","Baemin"],"Reservations":["Catch Table"],"Translation":["Papago","Google Translate"]},
+ outfit:[["Cream knit top + taupe trousers + white sneakers","Cream knit top","Taupe trousers","","White sneakers"],["Light blue shirt + grey jacket + jeans","Light blue shirt","Jeans","Grey jacket",""],["Beige trench coat + dark trousers + comfortable shoes","","Dark trousers","Beige trench coat","Comfortable shoes"],["Brown cardigan + cream bottoms + light outerwear","Brown cardigan","Cream bottoms","Light outerwear",""]]};
+function prep(){const tabs=[["pack","Packing"],["app","Travel Apps"],["outfit","Outfits"]];const all=S.prep.filter(x=>x.type===ptab);const dn=all.filter(x=>x.done).length;
+  let body="";
+  if(ptab==="outfit")body=all.sort(byOrd).map(o=>`<div class="card"><div class="row sp"><b class="${o.done?"done":""}">${esc(o.name)}</b><span><input type="checkbox" style="width:24px;min-height:24px" data-a="tog" data-id="${o.id}" ${o.done?"checked":""} aria-label="Packed"> packed</span></div><div class="mute">${[o.date&&fmt(o.date),o.top,o.bottom,o.outer,o.shoes,o.acc,o.colors].filter(Boolean).map(esc).join(" · ")}</div>${o.weather?`<div class="mute">Weather: ${esc(o.weather)}</div>`:""}<div class="row" style="margin-top:6px"><button class="btn s o" data-a="pedit2" data-id="${o.id}">Edit</button><button class="btn s d" data-a="pdel" data-id="${o.id}">Delete</button></div></div>`).join("");
+  else{const gs=[...new Set(all.sort(byOrd).map(x=>x.group||"Other"))];body=gs.map(g=>`<h3 style="margin-top:14px">${esc(g)}</h3>`+all.filter(x=>(x.group||"Other")===g).sort(byOrd).map(x=>`<div class="card row sp"><label style="margin:0;display:flex;gap:10px;align-items:center;color:inherit;flex:1"><input type="checkbox" style="width:24px;min-height:24px" data-a="tog" data-id="${x.id}" ${x.done?"checked":""}><span class="${x.done?"done":""}">${esc(x.name)}${x.notes?`<br><span class="mute">${esc(x.notes)}</span>`:""}</span></label><span class="row"><button class="btn s o" data-a="mv" data-id="${x.id}" data-n="-1" aria-label="Move up">↑</button><button class="btn s o" data-a="mv" data-id="${x.id}" data-n="1" aria-label="Move down">↓</button><button class="btn s o" data-a="pedit2" data-id="${x.id}">Edit</button><button class="btn s d" data-a="pdel" data-id="${x.id}" aria-label="Delete">✕</button></span></div>`).join("")).join("")}
+  return`<h2>Preparation</h2><div class="row" role="tablist">${tabs.map(([k,l])=>`<button class="btn s ${ptab===k?"":"o"}" data-a="ptab" data-k="${k}">${l}</button>`).join("")}</div>
+  ${ptab!=="outfit"&&all.length?`<p class="mute">${dn}/${all.length} done · ${Math.round(dn/all.length*100)}%</p><div class="bar"><b style="width:${dn/all.length*100}%"></b></div>`:""}
+  ${ptab==="app"?`<div class="ban">Account registration, phone verification, payment methods and tourist eligibility vary by service. Add official download links yourself; none are pre-filled.</div>`:""}
+  <div class="row" style="margin:10px 0"><button class="btn s" data-a="padd">+ Add</button>${all.length?`<button class="btn s o" data-a="preset">Reset ticks</button>`:`<button class="btn s o" data-a="pstart">Load starter list</button>`}</div>${body||empty("Nothing here yet.")}`}
+function render(){const t=S.trip;const V={home,itin,wish,map,ess,prep};
+  $("#nav").innerHTML=[["home","Home"],["itin","Itinerary"],["wish","Wishlist"],["map","Map"],["prep","Preparation"]].map(([k,l])=>`<button data-a="go" data-v="${k}" ${view===k?'aria-current="page"':""}>${l}</button>`).join("");
+  const keep=document.activeElement&&document.activeElement.id==="fq";
+  $("#app").innerHTML=(notice?`<div class="ban" role="status">${esc(notice)}</div>`:"")+V[view]();
+  if(keep){const q=$("#fq");q.focus();q.setSelectionRange(99,99)}}
+
+/* ---------- actions ---------- */
+function newPlace(extra,cb){form("Add place",PLACE,{category:"Other",...extra},async o=>{const id=uid();await save("places",{...o,id,wish:extra.wish!==false});close();cb&&cb(id)})}
+function addDay(pid){const p=place(pid),t=S.trip;form("Add to Day — "+esc(p.name),ITEM,{date:day||t?.start||"",type:"flexible",status:"none"},async o=>{
+  if(S.items.some(i=>i.placeId===pid&&i.date===o.date)){toast("Already scheduled on that date");return}
+  if(t&&(o.date<t.start||o.date>t.end)&&!confirm("That date is outside the trip dates. Add anyway?"))return;
+  const id=uid();await save("items",{...o,id,placeId:pid});day=o.date;view="itin";close();render();setTimeout(()=>showItem(id),300)})}
+function editItem(i){const old={...i};form("Edit schedule",ITEM,i,async o=>{
+  if(old.type==="fixed"&&(o.date!==old.date||o.start!==old.start||o.end!==old.end)&&!confirm("This is a fixed booking. Change its confirmed date/time?"))return;
+  if(old.type==="fixed"&&o.status==="Cancelled"&&old.status!=="Cancelled"&&!confirm("Mark this confirmed booking as cancelled?"))return;
+  await save("items",{...i,...o});close()})}
+function showItem(id){const i=S.items.find(x=>x.id===id);if(!i)return;const p=place(i.placeId);
+  sheet(`${p?placeDetail(p):`<h3>${esc(i.title)}</h3>`}<hr style="border:0;border-top:1px solid var(--line)"><p><span class="chip ${i.type==="fixed"?"f":""}">${i.type==="fixed"?"Fixed":"Flexible"}</span> ${fmt(i.date)} ${esc(i.start||"")}${i.end?"–"+esc(i.end):""}${i.status&&i.status!=="none"?" · "+esc(i.status):""}</p>${i.snotes?`<p>${esc(i.snotes)}</p>`:""}
+  <div class="row"><button class="btn s" data-a="iedit" data-id="${id}">Edit schedule</button>${p?`<button class="btn s o" data-a="pedit" data-id="${p.id}">Edit place</button>`:""}${p&&i.type!=="fixed"?`<button class="btn s o" data-a="towish" data-id="${id}">Return to Wishlist</button>`:""}<button class="btn s d" data-a="idel" data-id="${id}">Remove from day</button><button class="btn s o" data-a="x">Close</button></div>`)}
+const act={
+ x(e,el){if(el===e.target||el.tagName==="BUTTON")close()},
+ go(e,el){view=el.dataset.v;render();scrollTo(0,0)},
+ copy(e,el){copy(el.dataset.t)},
+ trip(){form(S.trip?"Edit trip":"Create trip",TRIP,S.trip||{},async o=>{if(o.end<o.start){toast("End date is before start date");return}try{new Intl.DateTimeFormat("en",{timeZone:o.tz})}catch(e){toast("Unknown time zone");return}await save("trips",{...(S.trip||{id:"main"}),...o});close()})},
+ day(e,el){day=addD(day,+el.dataset.n);render()},
+ addplan(e,el){const fx=el.dataset.t==="fixed";form(fx?"Add fixed plan":"Add flexible plan",[{k:"name",l:"What / where",r:1},{k:"city",l:"City"},{k:"address",l:"Address (optional)"},...ITEM.slice(0,1).map(f=>({...f,d:day||""})),{k:"start",l:"Start time",t:"time"},{k:"end",l:"End time",t:"time"},{k:"status",l:"Booking status",t:"select",o:ITEM[5].o,d:fx?"Confirmed":"none"}],{},async o=>{const pid=uid();await save("places",{name:o.name,city:o.city,address:o.address,category:"Other",wish:false,id:pid});const id=uid();await save("items",{id,placeId:pid,date:o.date,start:o.start,end:o.end,type:fx?"fixed":"flexible",status:o.status});day=o.date;close();render()})},
+ addwish(){newPlace({})},
+ addday(e,el){addDay(el.dataset.id)},
+ pdet(e,el){const p=place(el.dataset.id);sheet(placeDetail(p)+`<div class="row" style="margin-top:10px"><button class="btn s" data-a="pedit" data-id="${p.id}">Edit</button><button class="btn s d" data-a="pdel2" data-id="${p.id}">Delete place</button><button class="btn s o" data-a="x">Close</button></div>`)},
+ pedit(e,el){const p=place(el.dataset.id);form("Edit place",PLACE,p,async o=>{await save("places",{...p,...o});close()},"Changes here appear in both Wishlist and Itinerary.")},
+ pdel2(e,el){const p=place(el.dataset.id),n=sched(p.id).length;if(!confirm(n?`“${p.name}” is scheduled ${n} time(s). Delete the place and those entries?`:`Delete “${p.name}”?`))return;sched(p.id).forEach(i=>del("items",i.id));del("places",p.id);close()},
+ item(e,el){showItem(el.dataset.id)},
+ iedit(e,el){editItem(S.items.find(i=>i.id===el.dataset.id))},
+ async towish(e,el){const i=S.items.find(x=>x.id===el.dataset.id),p=place(i.placeId);await save("places",{...p,wish:true});await del("items",i.id);close();toast("Back in Wishlist")},
+ idel(e,el){const i=S.items.find(x=>x.id===el.dataset.id);if(i.type==="fixed"&&!confirm("Remove this fixed booking from the itinerary?"))return;del("items",i.id);close()},
+ addbk(){sheet(`<h2>Add</h2><div class="row">${Object.entries(BK).map(([k,l])=>`<button class="btn s o" data-a="bknew" data-k="${k}">${l}</button>`).join("")}</div>`)},
+ bknew(e,el){const k=el.dataset.k;form("Add "+BK[k],BF(k),{},async o=>{await save("book",{...o,kind:k});close()})},
+ bkedit(e,el){const b=S.book.find(x=>x.id===el.dataset.id);form("Edit "+BK[b.kind],BF(b.kind),b,async o=>{await save("book",{...b,...o});close()});$("#ff").insertAdjacentHTML("beforeend",`<button type="button" class="btn d s" style="margin-top:10px" data-a="bkdel" data-id="${b.id}">Delete</button>`)},
+ bkdel(e,el){if(confirm("Delete this record?")){del("book",el.dataset.id);close()}},
+ ptab(e,el){ptab=el.dataset.k;render()},
+ tog(e,el){const x=S.prep.find(i=>i.id===el.dataset.id);save("prep",{...x,done:!x.done})},
+ padd(){const f=ptab==="outfit"?[{k:"name",l:"Outfit name",r:1},{k:"date",l:"Date",t:"date"},{k:"top",l:"Top"},{k:"bottom",l:"Bottom"},{k:"outer",l:"Outerwear"},{k:"shoes",l:"Shoes"},{k:"acc",l:"Accessories"},{k:"colors",l:"Color combination"},{k:"weather",l:"Weather notes"},{k:"notes",l:"Notes",t:"textarea"}]:[{k:"name",l:"Name",r:1},{k:"group",l:"Group",d:ptab==="app"?"Other useful apps":"Other"},{k:"url",l:"Official URL (optional)"},{k:"notes",l:"Notes",t:"textarea"}];form("Add item",f,{},async o=>{await save("prep",{...o,type:ptab,done:false,ord:Date.now()});close()})},
+ pedit2(e,el){const x=S.prep.find(i=>i.id===el.dataset.id);const f=x.type==="outfit"?[{k:"name",l:"Outfit name",r:1},{k:"date",l:"Date",t:"date"},{k:"top",l:"Top"},{k:"bottom",l:"Bottom"},{k:"outer",l:"Outerwear"},{k:"shoes",l:"Shoes"},{k:"acc",l:"Accessories"},{k:"colors",l:"Color combination"},{k:"weather",l:"Weather notes"},{k:"notes",l:"Notes",t:"textarea"}]:[{k:"name",l:"Name",r:1},{k:"group",l:"Group"},{k:"url",l:"Official URL"},{k:"notes",l:"Notes",t:"textarea"}];form("Edit item",f,x,async o=>{await save("prep",{...x,...o});close()})},
+ pdel(e,el){if(confirm("Delete this item?"))del("prep",el.dataset.id)},
+ mv(e,el){const x=S.prep.find(i=>i.id===el.dataset.id);const g=S.prep.filter(i=>i.type===x.type&&(i.group||"Other")===(x.group||"Other")).sort(byOrd);const i=g.indexOf(x),j=i+ +el.dataset.n;if(j<0||j>=g.length)return;[g[i],g[j]]=[g[j],g[i]];g.forEach((y,k)=>save("prep",{...y,ord:k}))},
+ preset(){if(confirm("Untick everything in this list?"))S.prep.filter(x=>x.type===ptab&&x.done).forEach(x=>save("prep",{...x,done:false}))},
+ pstart(){if(ptab==="outfit"){START.outfit.forEach(([name,top,bottom,outer,shoes],k)=>save("prep",{type:"outfit",name,top,bottom,outer,shoes,done:false,ord:k}));return}
+  let k=0;Object.entries(START[ptab]).forEach(([g,l])=>l.forEach(name=>save("prep",{type:ptab,group:g,name,done:false,ord:k++})))}
+};
+document.addEventListener("click",e=>{const el=e.target.closest("[data-a]");if(el&&act[el.dataset.a])act[el.dataset.a](e,el)});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.dataset?.a==="item")act.item(e,e.target)});
+document.addEventListener("change",e=>{const t=e.target;if(t.dataset.f){F[t.dataset.f]=t.value;render()}else if(t.id==="dpick"&&t.value){day=t.value;render()}});
+document.addEventListener("input",e=>{if(e.target.id==="fq"){F.q=e.target.value;render()}});
+init();
+</script></body></html>
